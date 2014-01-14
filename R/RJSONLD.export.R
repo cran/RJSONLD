@@ -4,7 +4,9 @@
 #' Make your results of standard statistical analysis browsable and reproducible 
 #' by exporting them into JSON-LD, following a standardized vocabulary 
 #' (http://standardanalytics.io/stats). This vocabulary is still at a draft stage:
-#' provide feedback, suggestions and extenstions at https://github.com/standard-analytics/RJSONLD
+#' provide feedback, suggestions and extenstions at https://github.com/standard-analytics/terms
+#' This module currently supports the current functions: lm, lme, lmer, glm, aov,
+#' chis.test, t.test, cor.test, prop.test.
 #'
 #' @param object object to be exported.
 #'
@@ -37,7 +39,7 @@ setMethod("RJSONLD.export", "lm", function(object, path){
   coef <- coef(summary)
   res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                `@type` = 'LinearModel',
-               modelFormula = deparse(object$call$formula),
+               modelFormula = deparse(object$call$formula, width.cutoff = 500L),
                r2 = summary$r.squared,
                adjr2 = summary$adj.r.squared,
                fRatioTest = list(
@@ -67,6 +69,65 @@ setMethod("RJSONLD.export", "lm", function(object, path){
 })
 
 
+
+#' @rdname RJSONLD.export-methods
+setMethod("RJSONLD.export", "lme", function(object, path){
+  summary <- summary(object)
+  res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
+               `@type` = 'LinearModel',
+               modelFormula = paste(deparse(object$call$fixed), '+', substr(deparse(object$call$random), 2, nchar(deparse(object$call$random)))) ,
+               loglik = summary$loglik,
+               AIC = summary$AIC,
+               BIC = summary$BIC,
+               modelCoefficients = list()
+  )
+  terms = names(summary$fixDF$terms)
+  for(i in 1:length(terms)){
+    res$modelCoefficients[[i]]<-list(
+      name = terms[i],
+      estimate = summary$tTable[i,][[1]],
+      stdError = summary$tTable[i,][[2]],
+      statTest = list(
+        `@type` = 'TTest',
+        testStatistic = summary$tTable[i,][[4]],
+        df = summary$tTable[i,][[3]],
+        pValue = summary$tTable[i,][[5]]
+      )
+    )
+  }
+  cat(gsub("\t","  ",toJSON(res,pretty=1)),file=path)
+})
+
+
+
+#' @rdname RJSONLD.export-methods
+setMethod("RJSONLD.export", "lme4", function(object, path){
+  summary <- summary(object)
+  coef <- coef(summary)
+  res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
+               `@type` = 'LinearModel',
+               modelFormula = deparse(summary$call$formula) ,
+               loglik = summary$loglik[1],
+               AIC = summary$AICtab[1],
+               modelCoefficients = list()
+  )
+  terms = rownames(summary$coefficients)
+  for(i in 1:length(terms)){
+    res$modelCoefficients[[i]]<-list(
+      name = terms[i],
+      estimate = summary$coefficients[i,][[1]],
+      stdError = summary$coefficients[i,][[2]],
+      statTest = list(
+        `@type` = 'TTest',
+        testStatistic = summary$coefficients[i,][[3]]
+      )
+    )
+  }
+  cat(gsub("\t","  ",toJSON(res,pretty=1)),file=path)
+})
+
+
+
 #' @rdname RJSONLD.export-methods
 setMethod("RJSONLD.export", "glm", function(object, path){
   summary <- summary(object)
@@ -82,7 +143,7 @@ setMethod("RJSONLD.export", "glm", function(object, path){
   }
   res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                `@type` = 'GeneralizedLinearModel',
-               modelFormula = deparse(object$call$formula),
+               modelFormula = deparse(object$call$formula, width.cutoff = 500L),
                aic = summary$aic,
                family = object$family$family,
                modelCoefficients = list()
@@ -107,13 +168,15 @@ setMethod("RJSONLD.export", "glm", function(object, path){
 })
 
 
+
+
 #' @rdname RJSONLD.export-methods
 setMethod("RJSONLD.export", "aov", function(object, path){
   summary <- summary(object)
   terms <- attr(object$terms,'term.labels')
   res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                `@type` = 'LinearModel',
-               modelFormula = deparse(object$call$formula),
+               modelFormula = deparse(object$call$formula, width.cutoff = 500L),
                anova = list()
   )
   for (i in 1:length(terms)){
@@ -145,15 +208,16 @@ setOldClass("aovlist")
 setMethod("RJSONLD.export", "aovlist", function(object, path){
   res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                `@type` = 'LinearModel',
-               modelFormula = deparse(attr(object,'call')$formula),
+               modelFormula = deparse(attr(object,'call')$formula, width.cutoff = 500L),
                anova = list()
   )
   cpt = 0
   eff <- eff.aovlist(object)
   for (s in 2:length(object)){
-    terms <- colnames(eff)[eff[s-1,]==1]
+    terms <- colnames(eff)[eff[s-1,]>0]
     summary <- summary(object[[s]])
     if(length(terms)>0){
+      print(s)
       for (i in 1:length(terms)){
         cpt = cpt + 1
         res$anova[[cpt]] <- list(
@@ -171,14 +235,14 @@ setMethod("RJSONLD.export", "aovlist", function(object, path){
           )
         )
       }
+      cpt = cpt + 1
+      res$anova[[cpt]] <- list(
+        `@type` = 'ANOVAResidual',
+        errorStratum = names(object)[[s]],
+        sumSq = summary[[1]][[2]][[length(summary[[1]][[2]])]],
+        meanSq = summary[[1]][[3]][[length(summary[[1]][[3]])]]
+      )
     }  
-    cpt = cpt + 1
-    res$anova[[cpt]] <- list(
-      `@type` = 'ANOVAResidual',
-      errorStratum = names(object)[[s]],
-      sumSq = summary[[1]][[2]][[length(summary[[1]][[2]])]],
-      meanSq = summary[[1]][[3]][[length(summary[[1]][[3]])]]
-    )
   }
   cat(gsub("\t","  ",toJSON(res,pretty=1)),file=path)
 })
