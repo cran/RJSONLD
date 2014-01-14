@@ -1,13 +1,14 @@
-############################################################################
+#################################################################################
 #' Export results of standard statistical functions to semantic JSON-LD format
 #'
-#' Simply reformats standard statistical function outputs into
-#' JSON-LD format, abiding with statistical vocabulary described in 
-#' https://github.com/standard-analytics/Schemas
+#' Make your results of standard statistical analysis browsable and reproducible 
+#' by exporting them into JSON-LD, following a standardized vocabulary 
+#' (http://standardanalytics.io/stats). This vocabulary is still at a draft stage:
+#' provide feedback, suggestions and extenstions at https://github.com/standard-analytics/RJSONLD
 #'
 #' @param object object to be exported.
 #'
-#' @param path relative where JSON-LD file is to be created
+#' @param path relative path where JSON-LD file is to be created.
 #' exported.
 #'
 #' @return NULL
@@ -18,9 +19,9 @@
 #' @rdname RJSONLD.export-methods
 #'
 #' @examples
-#' RJSONLD.export(lm(iris$Petal.Length~iris$Sepal.Length),"irisLM.json")
-#' RJSONLD.export(aov(iris$Petal.Length~iris$Species),"irisANOVA.json")
-#' RJSONLD.export(aov(iris$Petal.Length~iris$Species*iris$Sepal.Length),"irisANCOVA.json")
+#' RJSONLD.export(lm(iris$Petal.Length~iris$Sepal.Length),"irisLM.jsonld")
+#' RJSONLD.export(aov(iris$Petal.Length~iris$Species),"irisANOVA.jsonld")
+#' RJSONLD.export(aov(iris$Petal.Length~iris$Species*iris$Sepal.Length),"irisANCOVA.jsonld")
 setGeneric("RJSONLD.export", function(object, path){
   standardGeneric("RJSONLD.export")
 })
@@ -34,14 +35,14 @@ setMethod("RJSONLD.export", "ANY", function(object, path){
 setMethod("RJSONLD.export", "lm", function(object, path){
   summary <- summary(object)
   coef <- coef(summary)
-  res <- list( `@context` = list( `@vocab` = 'http://schema.standardanalytics.io/ontology/stats'),
+  res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                `@type` = 'LinearModel',
                modelFormula = deparse(object$call$formula),
                r2 = summary$r.squared,
                adjr2 = summary$adj.r.squared,
                fRatioTest = list(
                  `@type`= 'FTest',
-                 statistic = summary$fstatistic[[1]],
+                 testStatistic = summary$fstatistic[[1]],
                  dfNum = summary$fstatistic[[2]],
                  dfDenom = summary$fstatistic[[3]],
                  pValue = pf(summary$fstatistic[[1]], summary$fstatistic[[2]], summary$fstatistic[[3]], lower.tail=FALSE)
@@ -56,13 +57,13 @@ setMethod("RJSONLD.export", "lm", function(object, path){
       stdError = coef[i,][[2]],
       statTest = list(
         `@type` = 'TTest',
-        statistic = coef[i,][[3]],
+        testStatistic = coef[i,][[3]],
         df = summary$df[[2]],
         pValue = coef[i,][[4]]
       )
     )
   }
-  cat(toJSON(res,pretty=1),file=path)
+  cat(gsub("\t","  ",toJSON(res,pretty=1)),file=path)
 })
 
 
@@ -79,7 +80,7 @@ setMethod("RJSONLD.export", "glm", function(object, path){
       terms[cpt]<- substr(names[i],9,nchar(names[i]))
     }
   }
-  res <- list( `@context` = list( `@vocab` = 'http://schema.standardanalytics.io/ontology/stats'),
+  res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                `@type` = 'GeneralizedLinearModel',
                modelFormula = deparse(object$call$formula),
                aic = summary$aic,
@@ -92,7 +93,7 @@ setMethod("RJSONLD.export", "glm", function(object, path){
       estimate = coef[i,][[1]],
       stdError = coef[i,][[2]],
       statTest = list(
-        statistic = coef[i,][[3]],
+        testStatistic = coef[i,][[3]],
         pValue = coef[i,][[4]]
       )
     )
@@ -102,7 +103,7 @@ setMethod("RJSONLD.export", "glm", function(object, path){
       res$modelCoefficients[[i]]$statTest$`@type` <- 'ZTest'
     }
   }
-  cat(toJSON(res,pretty=1),file=path)
+  cat(gsub("\t","  ",toJSON(res,pretty=1)),file=path)
 })
 
 
@@ -110,7 +111,7 @@ setMethod("RJSONLD.export", "glm", function(object, path){
 setMethod("RJSONLD.export", "aov", function(object, path){
   summary <- summary(object)
   terms <- attr(object$terms,'term.labels')
-  res <- list( `@context` = list( `@vocab` = 'http://schema.standardanalytics.io/ontology/stats'),
+  res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                `@type` = 'LinearModel',
                modelFormula = deparse(object$call$formula),
                anova = list()
@@ -123,7 +124,7 @@ setMethod("RJSONLD.export", "aov", function(object, path){
       meanSq = summary[[1]][['Mean Sq']][[i]],
       statTest = list(
         `@type` = 'FTest',
-        statistic = summary[[1]][['F value']][[i]],
+        testStatistic = summary[[1]][['F value']][[i]],
         dfNum = summary[[1]]$Df[[i]],
         dfDenom = summary[[1]][[1]][[length(summary[[1]][[1]])]],
         pValue = summary[[1]][['Pr(>F)']][[i]]
@@ -135,14 +136,14 @@ setMethod("RJSONLD.export", "aov", function(object, path){
     sumSq = summary[[1]][[2]][[length(summary[[1]][[2]])]],
     meanSq = summary[[1]][[3]][[length(summary[[1]][[3]])]]
   )
-  cat(toJSON(res,pretty=1),file=path)
+  cat(gsub("\t","  ",toJSON(res,pretty=1)),file=path)
 })
 
 
 setOldClass("aovlist")
 #' @rdname RJSONLD.export-methods
 setMethod("RJSONLD.export", "aovlist", function(object, path){
-  res <- list( `@context` = list( `@vocab` = 'http://schema.standardanalytics.io/ontology/stats'),
+  res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                `@type` = 'LinearModel',
                modelFormula = deparse(attr(object,'call')$formula),
                anova = list()
@@ -163,7 +164,7 @@ setMethod("RJSONLD.export", "aovlist", function(object, path){
           meanSq = summary[[1]][['Mean Sq']][[i]],
           statTest = list(
             `@type` = 'FTest',
-            statistic = summary[[1]][['F value']][[i]],
+            testStatistic = summary[[1]][['F value']][[i]],
             dfNum = summary[[1]]$Df[[i]],
             dfDenom = summary[[1]][[1]][[length(summary[[1]][[1]])]],
             pValue = summary[[1]][['Pr(>F)']][[i]]
@@ -179,7 +180,7 @@ setMethod("RJSONLD.export", "aovlist", function(object, path){
       meanSq = summary[[1]][[3]][[length(summary[[1]][[3]])]]
     )
   }
-  cat(toJSON(res,pretty=1),file=path)
+  cat(gsub("\t","  ",toJSON(res,pretty=1)),file=path)
 })
 
 setOldClass("htest")
@@ -187,37 +188,37 @@ setOldClass("htest")
 setMethod("RJSONLD.export", "htest", function(object, path){
   summary <- summary(object)
   if(length(grep("correlation",   object$method))){
-    res <- list( `@context` = list( `@vocab` = 'http://schema.standardanalytics.io/ontology/stats'),
+    res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                  `@type` = 'Correlation',
                  covariate1 = strsplit(object$data.name," and ")[[1]][1],
                  covariate2 = strsplit(object$data.name," and ")[[1]][2],
                  estimate = object$estimate[[1]],
                  statTest = list(
                    `@type` = 'TTest',
-                   statistic = object$statistic[[1]],
+                   testStatistic = object$statistic[[1]],
                    df = object$parameter[[1]],
                    pValue = object$p.value[[1]]
                  )
     )
   } else if(length(grep("proportions ",   object$method))){
-    res <- list( `@context` = list( `@vocab` = 'http://schema.standardanalytics.io/ontology/stats'),
+    res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                  `@type` = 'Proportion',
                  estimate = object$estimate[[1]],
                  statTest = list(
                    `@type` = 'ChisqTest',
-                   statistic = object$statistic[[1]],
+                   testStatistic = object$statistic[[1]],
                    df = object$parameter[[1]],
                    pValue = object$p.value[[1]]
                  )
     )
   } else {
-    res <- list( `@context` = list( `@vocab` = 'http://schema.standardanalytics.io/ontology/stats'),
+    res <- list( `@context` = list( `@vocab` = 'http://standardanalytics.io/stats/'),
                  `@type` = 'StatTest',
                  description = object$data.name[[1]],
-                 statistic = object$statistic[[1]],
+                 testStatistic = object$statistic[[1]],
                  df = object$parameter[[1]],
                  pValue = object$p.value[[1]]
     )
   }
-  cat(toJSON(res,pretty=1),file=path)
+  cat(gsub("\t","  ",toJSON(res,pretty=1)),file=path)
 })
